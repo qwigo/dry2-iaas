@@ -18,8 +18,8 @@ console = Console()
 app = typer.Typer()
 
 
-@app.command()
-def project(
+@app.command(name="")
+def init_project(
     project_name: str = typer.Option(None, "--name", "-n", help="Project name"),
     skip_deploy: bool = typer.Option(False, "--skip-deploy", help="Skip initial deployment"),
 ):

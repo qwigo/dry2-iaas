@@ -12,8 +12,8 @@ console = Console()
 app = typer.Typer()
 
 
-@app.command()
-def environment(
+@app.command(name="")
+def destroy_environment(
     project_name: str = typer.Argument(..., help="Project name"),
     environment: str = typer.Argument(..., help="Environment name"),
     auto_approve: bool = typer.Option(False, "--auto-approve", "-y", help="Skip confirmation"),

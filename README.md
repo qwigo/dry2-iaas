@@ -57,6 +57,19 @@ dry2 --version
 dry2 --help
 ```
 
+### Update Existing Installation
+
+If you've already installed `dry2` and need to update to the latest version:
+
+```bash
+# Update with Poetry
+poetry update dry2-cli
+
+# Or reinstall
+poetry remove dry2-cli
+poetry add git+https://github.com/qwigo/dry2-iaas.git
+```
+
 ## Quick Start
 
 ### 1. Initialize a New Project

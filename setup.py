@@ -6,7 +6,8 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
-        "typer[all]>=0.9.0",
+        "typer[all]>=0.12.0",
+        "click>=8.1.0",
         "rich>=13.0.0",
         "questionary>=2.0.0",
         "pyyaml>=6.0",

@@ -15,8 +15,8 @@ console = Console()
 app = typer.Typer()
 
 
-@app.command()
-def project(
+@app.command(name="")
+def show_status(
     project_name: str = typer.Argument(..., help="Project name"),
 ):
     """Show status overview for a project."""
