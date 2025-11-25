@@ -23,8 +23,7 @@ setup(
     python_requires=">=3.8",
     author="DRY2-IaaS",
     description="PaaS-style CLI for DRY2 Infrastructure as Code",
-    long_description=open("../README.md").read(),
+    long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
 )
-
 

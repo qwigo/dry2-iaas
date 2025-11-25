@@ -3,7 +3,7 @@ name = "dry2-cli"
 version = "1.0.0"
 description = "PaaS-style CLI for DRY2 Infrastructure as Code"
 authors = ["DRY2-IaaS Team"]
-readme = "../README.md"
+readme = "README.md"
 packages = [{include = "dry2"}]
 license = "MIT"
 

@@ -33,23 +33,21 @@ You can install `dry2` directly from this GitHub repository using Poetry:
 
 ```bash
 # Option 1: Install as a dependency in your project
-poetry add git+https://github.com/YOUR_USERNAME/dry2-iaas.git#subdirectory=cli
+poetry add git+https://github.com/qwigo/dry2-iaas.git
 
 # Option 2: Clone and install for development
-git clone https://github.com/YOUR_USERNAME/dry2-iaas.git
-cd dry2-iaas/cli
+git clone https://github.com/qwigo/dry2-iaas.git
+cd dry2-iaas
 poetry install
 poetry shell
 ```
-
-**Note:** If you get an error about missing `pyproject.toml`, make sure you're using the latest version from the repository which includes the Poetry configuration.
 
 ### Install via pip from GitHub
 
 Alternatively, you can use pip:
 
 ```bash
-pip install git+https://github.com/YOUR_USERNAME/dry2-iaas.git#subdirectory=cli
+pip install git+https://github.com/qwigo/dry2-iaas.git
 ```
 
 ### Verify Installation
@@ -193,13 +191,13 @@ dry2 destroy all --env <environment>     # Destroy everything
 
 ```
 dry2-iaas/
-├── cli/                          # DRY2 CLI tool
-│   ├── dry2/
-│   │   ├── commands/            # CLI command implementations
-│   │   ├── templates/           # Jinja2 templates
-│   │   └── utils/               # Utility functions
-│   ├── requirements.txt
-│   └── setup.py
+├── dry2/                         # DRY2 CLI Python package
+│   ├── commands/                # CLI command implementations
+│   ├── templates/               # Jinja2 templates
+│   └── utils/                   # Utility functions
+├── pyproject.toml               # Poetry configuration
+├── setup.py                     # Setuptools configuration
+├── requirements.txt             # Python dependencies
 │
 ├── terraform/                    # Terraform configurations
 │   ├── environments/            # Environment-specific configs
@@ -321,9 +319,9 @@ This project is licensed under the terms specified in the [LICENSE](LICENSE) fil
 
 ## Support
 
-- 📖 [Documentation](https://github.com/YOUR_USERNAME/dry2-iaas/wiki)
-- 🐛 [Issue Tracker](https://github.com/YOUR_USERNAME/dry2-iaas/issues)
-- 💬 [Discussions](https://github.com/YOUR_USERNAME/dry2-iaas/discussions)
+- 📖 [Documentation](https://github.com/qwigo/dry2-iaas/wiki)
+- 🐛 [Issue Tracker](https://github.com/qwigo/dry2-iaas/issues)
+- 💬 [Discussions](https://github.com/qwigo/dry2-iaas/discussions)
 
 ## Roadmap
 
