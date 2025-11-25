@@ -1,0 +1,148 @@
+name: Terraform Plan
+
+on:
+  pull_request:
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform-*.yml'
+  workflow_dispatch:
+    inputs:
+      project:
+        description: 'Project name (e.g., carcamp, neatcamp)'
+        required: true
+        type: string
+      environment:
+        description: 'Environment (dev, staging, production)'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - production
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      projects: ${{ steps.detect.outputs.projects }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed projects
+        id: detect
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            # Manual trigger - use input parameters
+            echo "projects=[{\"project\":\"${{ inputs.project }}\",\"environment\":\"${{ inputs.environment }}\"}]" >> $GITHUB_OUTPUT
+          else
+            # PR trigger - detect changes
+            CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.sha }})
+            echo "Changed files:"
+            echo "$CHANGED_FILES"
+            
+            # Find unique project/environment combinations that changed
+            PROJECTS=$(echo "$CHANGED_FILES" | \
+              grep '^terraform/projects/' | \
+              sed -n 's|^terraform/projects/\([^/]*\)/\([^/]*\)/.*|\1 \2|p' | \
+              sort -u | \
+              jq -R -s -c 'split("\n")[:-1] | map(split(" ") | {project: .[0], environment: .[1]})')
+            
+            if [ -z "$PROJECTS" ] || [ "$PROJECTS" == "[]" ]; then
+              echo "No project changes detected"
+              echo "projects=[]" >> $GITHUB_OUTPUT
+            else
+              echo "Detected projects: $PROJECTS"
+              echo "projects=$PROJECTS" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+  terraform-plan:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.projects != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        project_env: ${{ fromJson(needs.detect-changes.outputs.projects) }}
+    
+    env:
+      TF_DIR: terraform/projects/${{ matrix.project_env.project }}/${{ matrix.project_env.environment }}
+      
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ~1.5.0
+
+      - name: Configure Terraform credentials
+        working-directory: ${{ env.TF_DIR }}
+        env:
+          CIVO_TOKEN: ${{ secrets[format('{0}_{1}_CIVO_TOKEN', matrix.project_env.project, matrix.project_env.environment)] }}
+          UPSTASH_EMAIL: ${{ secrets[format('{0}_{1}_UPSTASH_EMAIL', matrix.project_env.project, matrix.project_env.environment)] }}
+          UPSTASH_API_KEY: ${{ secrets[format('{0}_{1}_UPSTASH_API_KEY', matrix.project_env.project, matrix.project_env.environment)] }}
+        run: |
+          cat > terraform.tfvars <<EOF
+          civo_token = "$CIVO_TOKEN"
+          upstash_email = "$UPSTASH_EMAIL"
+          upstash_api_key = "$UPSTASH_API_KEY"
+          project_name = "${{ matrix.project_env.project }}"
+          EOF
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init
+
+      - name: Terraform Format Check
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Validate
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform validate
+
+      - name: Terraform Plan
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform plan -out=tfplan -no-color | tee plan.txt
+          
+      - name: Comment PR with Plan
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('${{ env.TF_DIR }}/plan.txt', 'utf8');
+            const maxCommentLength = 65000;
+            let planOutput = plan.length > maxCommentLength 
+              ? plan.substring(0, maxCommentLength) + '\n...(truncated)'
+              : plan;
+              
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Terraform Plan: \`${{ matrix.project_env.project }}-${{ matrix.project_env.environment }}\`
+              
+              \`\`\`terraform
+              ${planOutput}
+              \`\`\`
+              
+              **Project:** ${{ matrix.project_env.project }}
+              **Environment:** ${{ matrix.project_env.environment }}
+              **Working Directory:** \`${{ env.TF_DIR }}\`
+              `
+            });
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ matrix.project_env.project }}-${{ matrix.project_env.environment }}
+          path: ${{ env.TF_DIR }}/tfplan
+          retention-days: 5
+
+
+
+

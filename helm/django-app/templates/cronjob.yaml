@@ -1,0 +1,48 @@
+{{- range .Values.cronjobs }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "django-app.fullname" $ }}-{{ .name }}
+  labels:
+    {{- include "django-app.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: cronjob
+spec:
+  schedule: {{ .schedule | quote }}
+  successfulJobsHistoryLimit: {{ .successfulJobsHistoryLimit | default 3 }}
+  failedJobsHistoryLimit: {{ .failedJobsHistoryLimit | default 1 }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "django-app.selectorLabels" $ | nindent 12 }}
+            app.kubernetes.io/component: cronjob
+        spec:
+          restartPolicy: OnFailure
+          {{- if $.Values.serviceAccount.create }}
+          serviceAccountName: {{ include "django-app.serviceAccountName" $ }}
+          {{- end }}
+          securityContext:
+            {{- toYaml $.Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: {{ .name }}
+              securityContext:
+                {{- toYaml $.Values.securityContext | nindent 16 }}
+              image: {{ include "django-app.image" $ }}
+              imagePullPolicy: {{ $.Values.django.image.pullPolicy }}
+              command: {{ toJson .command }}
+              envFrom:
+                - configMapRef:
+                    name: {{ include "django-app.fullname" $ }}
+                - secretRef:
+                    name: {{ include "django-app.fullname" $ }}
+              {{- with $.Values.django.secretEnv }}
+              env:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+{{- end }}
+
+
+
+

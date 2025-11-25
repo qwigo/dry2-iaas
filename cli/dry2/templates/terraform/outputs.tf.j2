@@ -1,0 +1,64 @@
+output "cluster_id" {
+  description = "Kubernetes cluster ID"
+  value       = module.k8s_cluster.cluster_id
+}
+
+output "cluster_name" {
+  description = "Kubernetes cluster name"
+  value       = module.k8s_cluster.cluster_name
+}
+
+output "kubeconfig" {
+  description = "Kubeconfig for cluster access"
+  value       = module.k8s_cluster.kubeconfig
+  sensitive   = true
+}
+
+output "cluster_endpoint" {
+  description = "Kubernetes API endpoint"
+  value       = module.k8s_cluster.api_endpoint
+}
+
+output "media_bucket_name" {
+  description = "Media storage bucket name"
+  value       = module.media_storage.bucket_name
+}
+
+output "media_bucket_url" {
+  description = "Media storage bucket URL"
+  value       = module.media_storage.bucket_url
+}
+
+output "static_bucket_name" {
+  description = "Static files storage bucket name"
+  value       = module.static_storage.bucket_name
+}
+
+output "static_bucket_url" {
+  description = "Static files storage bucket URL"
+  value       = module.static_storage.bucket_url
+}
+
+output "redis_endpoint" {
+  description = "Redis endpoint"
+  value       = module.redis_cache.endpoint
+}
+
+output "redis_port" {
+  description = "Redis port"
+  value       = module.redis_cache.port
+}
+
+output "redis_password" {
+  description = "Redis password"
+  value       = module.redis_cache.password
+  sensitive   = true
+}
+
+output "redis_url" {
+  description = "Redis connection URL"
+  value       = module.redis_cache.redis_url
+  sensitive   = true
+}
+
+

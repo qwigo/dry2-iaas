@@ -1,0 +1,262 @@
+# Default values for django-app
+# This is a YAML-formatted file.
+# Override these values in environment-specific values files
+
+# Application name and labels
+nameOverride: ""
+fullnameOverride: ""
+
+# Django application configuration
+django:
+  image:
+    repository: ghcr.io/your-org/your-app
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  
+  # Django settings module
+  settingsModule: "myapp.settings"
+  
+  # Number of web server replicas
+  replicaCount: 2
+  
+  # Resource limits and requests
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  
+  # Health check configuration
+  livenessProbe:
+    enabled: true
+    httpGet:
+      path: /health/
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  
+  readinessProbe:
+    enabled: true
+    httpGet:
+      path: /health/
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  
+  # Gunicorn configuration
+  gunicorn:
+    workers: 4
+    threads: 2
+    timeout: 60
+    maxRequests: 1000
+    maxRequestsJitter: 50
+  
+  # Environment variables
+  env:
+    DEBUG: "false"
+    PYTHONUNBUFFERED: "1"
+    PYTHONDONTWRITEBYTECODE: "1"
+  
+  # Secret environment variables (from Kubernetes secrets)
+  secretEnv: []
+    # - name: SECRET_KEY
+    #   valueFrom:
+    #     secretKeyRef:
+    #       name: django-secrets
+    #       key: secret-key
+
+# Worker configuration (for async tasks like RQ, Celery)
+worker:
+  enabled: true
+  replicaCount: 2
+  
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  
+  # Worker command (e.g., for RQ: "python manage.py rqworker default")
+  command: ["python", "manage.py", "rqworker", "default"]
+  
+  # Autoscaling for workers
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+
+# Database configuration
+database:
+  # External database connection (PlanetScale, etc.)
+  host: ""
+  port: 3306
+  name: ""
+  username: ""
+  # Password should be provided via secret
+  sslMode: "require"
+
+# Redis configuration
+redis:
+  host: ""
+  port: 6379
+  # Password should be provided via secret
+  ssl: true
+  db: 0
+
+# Object Storage (Civo S3-compatible)
+storage:
+  enabled: true
+  provider: "s3"  # s3, gcs, azure
+  bucket: ""
+  region: "NYC1"
+  endpoint: ""
+  # Access keys should be provided via secret
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+  annotations: {}
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: app.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: django-app-tls
+      hosts:
+        - app.example.com
+
+# Horizontal Pod Autoscaler
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 80
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Service account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Pod security context
+podSecurityContext:
+  fsGroup: 1000
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity rules
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - django-app
+          topologyKey: kubernetes.io/hostname
+
+# Init containers (for migrations, collectstatic, etc.)
+initContainers:
+  migrations:
+    enabled: true
+    command: ["python", "manage.py", "migrate", "--noinput"]
+  
+  collectstatic:
+    enabled: true
+    command: ["python", "manage.py", "collectstatic", "--noinput"]
+
+# Cron jobs for periodic tasks
+cronjobs: []
+  # - name: cleanup
+  #   schedule: "0 2 * * *"
+  #   command: ["python", "manage.py", "cleanup"]
+  #   successfulJobsHistoryLimit: 3
+  #   failedJobsHistoryLimit: 1
+
+# Secrets management
+secrets:
+  # Use external secrets operator
+  externalSecrets:
+    enabled: false
+    backendType: secretsManager  # secretsManager, vault, etc.
+    refreshInterval: 1h
+    secretStoreRef:
+      name: aws-secrets-manager
+      kind: SecretStore
+  
+  # Manual secret creation
+  create: true
+  data: {}
+    # secret-key: "your-django-secret-key"
+    # database-password: "your-db-password"
+    # redis-password: "your-redis-password"
+
+# ConfigMap for additional configuration
+configMap:
+  data: {}
+    # ALLOWED_HOSTS: "app.example.com,www.app.example.com"
+
+# Monitoring
+monitoring:
+  enabled: false
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    path: /metrics
+
+# Logging
+logging:
+  level: INFO
+  json: true
+
+# Volume mounts for persistent data
+volumes: []
+volumeMounts: []
+
+
+
+

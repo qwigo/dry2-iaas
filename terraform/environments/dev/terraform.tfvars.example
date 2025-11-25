@@ -1,0 +1,35 @@
+# Copy this file to terraform.tfvars and fill in your values
+# NEVER commit terraform.tfvars to version control!
+
+# Provider credentials
+civo_token       = "your-civo-api-token-here"
+upstash_email    = "your-upstash-email@example.com"
+upstash_api_key  = "your-upstash-api-key-here"
+
+# Project configuration
+project_name = "myapp"
+region       = "NYC1"
+upstash_region = "us-east-1"
+
+# Kubernetes configuration
+kubernetes_version = null # Use latest stable version
+
+node_pools = [
+  {
+    label      = "general"
+    size       = "g4s.kube.medium"  # 2 CPU, 4GB RAM
+    node_count = 2
+  }
+]
+
+# Storage configuration
+media_bucket_size_gb  = 50  # GB
+static_bucket_size_gb = 20  # GB
+
+# Redis configuration
+redis_max_memory_mb          = 256    # MB (free tier)
+redis_max_commands_per_second = 10000 # commands/sec
+
+
+
+

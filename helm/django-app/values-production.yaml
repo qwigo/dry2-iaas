@@ -1,0 +1,122 @@
+# Production environment values
+# Override base values.yaml for production environment
+
+django:
+  image:
+    tag: "production-latest"
+  
+  replicaCount: 3
+  
+  resources:
+    limits:
+      cpu: 1500m
+      memory: 1536Mi
+    requests:
+      cpu: 750m
+      memory: 768Mi
+  
+  gunicorn:
+    workers: 8
+    threads: 4
+    timeout: 60
+    maxRequests: 5000
+    maxRequestsJitter: 100
+  
+  env:
+    DEBUG: "false"
+    ENVIRONMENT: "production"
+
+worker:
+  enabled: true
+  replicaCount: 3
+  
+  resources:
+    limits:
+      cpu: 750m
+      memory: 768Mi
+    requests:
+      cpu: 400m
+      memory: 384Mi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 15
+    targetCPUUtilizationPercentage: 70
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 15
+  targetCPUUtilizationPercentage: 65
+  targetMemoryUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/connection-limit: "50"
+  hosts:
+    - host: myapp.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+    - host: www.myapp.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: django-app-production-tls
+      hosts:
+        - myapp.example.com
+        - www.myapp.example.com
+
+logging:
+  level: INFO
+  json: true
+
+# Production cron jobs
+cronjobs:
+  - name: cleanup-sessions
+    schedule: "0 1 * * *"  # Daily at 1 AM
+    command: ["python", "manage.py", "clearsessions"]
+    successfulJobsHistoryLimit: 3
+    failedJobsHistoryLimit: 2
+  
+  - name: backup-media
+    schedule: "0 4 * * 0"  # Weekly on Sunday at 4 AM
+    command: ["python", "manage.py", "backup_media"]
+    successfulJobsHistoryLimit: 4
+    failedJobsHistoryLimit: 2
+
+# Production monitoring
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    path: /metrics
+
+# Production affinity for better distribution
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+                - django-app
+        topologyKey: kubernetes.io/hostname
+
+
+
+

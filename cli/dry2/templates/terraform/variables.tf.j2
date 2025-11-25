@@ -1,0 +1,70 @@
+variable "civo_token" {
+  description = "Civo API token"
+  type        = string
+  sensitive   = true
+}
+
+variable "upstash_email" {
+  description = "Upstash account email"
+  type        = string
+}
+
+variable "upstash_api_key" {
+  description = "Upstash API key"
+  type        = string
+  sensitive   = true
+}
+
+variable "project_name" {
+  description = "Name of the project"
+  type        = string
+}
+
+variable "region" {
+  description = "Civo region"
+  type        = string
+  default     = "NYC1"
+}
+
+variable "upstash_region" {
+  description = "Upstash region"
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "kubernetes_version" {
+  description = "Kubernetes version (null for latest stable)"
+  type        = string
+  default     = null
+}
+
+variable "node_pools" {
+  description = "Kubernetes node pools configuration"
+  type = list(object({
+    label      = string
+    size       = string
+    node_count = number
+  }))
+}
+
+variable "media_bucket_size_gb" {
+  description = "Maximum size for media bucket in GB"
+  type        = number
+}
+
+variable "static_bucket_size_gb" {
+  description = "Maximum size for static files bucket in GB"
+  type        = number
+}
+
+variable "redis_max_memory_mb" {
+  description = "Maximum memory for Redis in MB"
+  type        = number
+}
+
+variable "redis_max_commands_per_second" {
+  description = "Maximum commands per second for Redis"
+  type        = number
+}
+
+

@@ -1,0 +1,80 @@
+name: Terraform Apply
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to apply'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - production
+
+jobs:
+  terraform-apply:
+    name: Terraform Apply (${{ github.event.inputs.environment || 'dev' }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    
+    environment:
+      name: ${{ github.event.inputs.environment || 'dev' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+      
+      - name: Terraform Init
+        run: terraform init
+        working-directory: terraform/environments/${{ github.event.inputs.environment || 'dev' }}
+        env:
+          TF_VAR_civo_token: ${{ secrets.CIVO_TOKEN }}
+          TF_VAR_upstash_email: ${{ secrets.UPSTASH_EMAIL }}
+          TF_VAR_upstash_api_key: ${{ secrets.UPSTASH_API_KEY }}
+      
+      - name: Terraform Apply
+        run: terraform apply -auto-approve -input=false
+        working-directory: terraform/environments/${{ github.event.inputs.environment || 'dev' }}
+        env:
+          TF_VAR_civo_token: ${{ secrets.CIVO_TOKEN }}
+          TF_VAR_upstash_email: ${{ secrets.UPSTASH_EMAIL }}
+          TF_VAR_upstash_api_key: ${{ secrets.UPSTASH_API_KEY }}
+          TF_VAR_project_name: ${{ secrets.PROJECT_NAME }}
+      
+      - name: Save Terraform Outputs
+        id: outputs
+        run: |
+          terraform output -json > outputs.json
+          echo "kubeconfig<<EOF" >> $GITHUB_OUTPUT
+          terraform output -raw kubeconfig >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        working-directory: terraform/environments/${{ github.event.inputs.environment || 'dev' }}
+        env:
+          TF_VAR_civo_token: ${{ secrets.CIVO_TOKEN }}
+          TF_VAR_upstash_email: ${{ secrets.UPSTASH_EMAIL }}
+          TF_VAR_upstash_api_key: ${{ secrets.UPSTASH_API_KEY }}
+          TF_VAR_project_name: ${{ secrets.PROJECT_NAME }}
+      
+      - name: Upload outputs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-outputs-${{ github.event.inputs.environment || 'dev' }}
+          path: terraform/environments/${{ github.event.inputs.environment || 'dev' }}/outputs.json
+          retention-days: 30
+
+
+
+

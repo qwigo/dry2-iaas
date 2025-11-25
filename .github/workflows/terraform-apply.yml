@@ -1,0 +1,160 @@
+name: Terraform Apply
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform-*.yml'
+  workflow_dispatch:
+    inputs:
+      project:
+        description: 'Project name (e.g., carcamp, neatcamp)'
+        required: true
+        type: string
+      environment:
+        description: 'Environment (dev, staging, production)'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - production
+      auto_approve:
+        description: 'Auto-approve apply (use with caution)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      projects: ${{ steps.detect.outputs.projects }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed projects
+        id: detect
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            # Manual trigger
+            echo "projects=[{\"project\":\"${{ inputs.project }}\",\"environment\":\"${{ inputs.environment }}\"}]" >> $GITHUB_OUTPUT
+          else
+            # Push to main - detect changes in last commit
+            CHANGED_FILES=$(git diff --name-only HEAD^ HEAD)
+            echo "Changed files:"
+            echo "$CHANGED_FILES"
+            
+            PROJECTS=$(echo "$CHANGED_FILES" | \
+              grep '^terraform/projects/' | \
+              sed -n 's|^terraform/projects/\([^/]*\)/\([^/]*\)/.*|\1 \2|p' | \
+              sort -u | \
+              jq -R -s -c 'split("\n")[:-1] | map(split(" ") | {project: .[0], environment: .[1]})')
+            
+            if [ -z "$PROJECTS" ] || [ "$PROJECTS" == "[]" ]; then
+              echo "No project changes detected"
+              echo "projects=[]" >> $GITHUB_OUTPUT
+            else
+              echo "Detected projects: $PROJECTS"
+              echo "projects=$PROJECTS" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+  terraform-apply:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.projects != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        project_env: ${{ fromJson(needs.detect-changes.outputs.projects) }}
+      max-parallel: 1  # Apply one at a time to avoid conflicts
+    
+    environment: 
+      name: ${{ matrix.project_env.project }}-${{ matrix.project_env.environment }}
+      
+    env:
+      TF_DIR: terraform/projects/${{ matrix.project_env.project }}/${{ matrix.project_env.environment }}
+      
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ~1.5.0
+
+      - name: Configure Terraform credentials
+        working-directory: ${{ env.TF_DIR }}
+        env:
+          CIVO_TOKEN: ${{ secrets[format('{0}_{1}_CIVO_TOKEN', matrix.project_env.project, matrix.project_env.environment)] }}
+          UPSTASH_EMAIL: ${{ secrets[format('{0}_{1}_UPSTASH_EMAIL', matrix.project_env.project, matrix.project_env.environment)] }}
+          UPSTASH_API_KEY: ${{ secrets[format('{0}_{1}_UPSTASH_API_KEY', matrix.project_env.project, matrix.project_env.environment)] }}
+        run: |
+          cat > terraform.tfvars <<EOF
+          civo_token = "$CIVO_TOKEN"
+          upstash_email = "$UPSTASH_EMAIL"
+          upstash_api_key = "$UPSTASH_API_KEY"
+          project_name = "${{ matrix.project_env.project }}"
+          EOF
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init
+
+      - name: Terraform Plan
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          if [ "${{ inputs.auto_approve }}" == "true" ] || [ "${{ github.event_name }}" == "push" ]; then
+            terraform apply tfplan
+          else
+            echo "Auto-approve not enabled. Skipping apply."
+            exit 1
+          fi
+
+      - name: Save outputs
+        if: success()
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform output -json > outputs.json
+          echo "Terraform outputs saved to outputs.json"
+
+      - name: Update kubeconfig secret
+        if: success()
+        working-directory: ${{ env.TF_DIR }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Extract kubeconfig and save as GitHub secret
+          KUBECONFIG_B64=$(terraform output -raw kubeconfig | base64 -w 0 || terraform output -raw kubeconfig | base64)
+          SECRET_NAME="${{ matrix.project_env.project }}_${{ matrix.project_env.environment }}_KUBECONFIG"
+          
+          # Use GitHub CLI to update secret
+          echo "$KUBECONFIG_B64" | gh secret set "$SECRET_NAME" --repo ${{ github.repository }}
+          
+          echo "Updated GitHub secret: $SECRET_NAME"
+
+      - name: Notify on success
+        if: success()
+        run: |
+          echo "✅ Infrastructure deployed successfully!"
+          echo "Project: ${{ matrix.project_env.project }}"
+          echo "Environment: ${{ matrix.project_env.environment }}"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Infrastructure deployment failed!"
+          echo "Project: ${{ matrix.project_env.project }}"
+          echo "Environment: ${{ matrix.project_env.environment }}"
+
+
+
+

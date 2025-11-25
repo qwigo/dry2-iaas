@@ -1,0 +1,168 @@
+name: Application Deploy
+
+# This workflow is triggered from application repos (carcamp, neatcamp, etc.)
+# It deploys the application to the appropriate environment based on the branch
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        description: 'Project name (e.g., carcamp, neatcamp)'
+        required: true
+        type: string
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: string
+      image_tag:
+        description: 'Docker image tag to deploy'
+        required: true
+        type: string
+      image_repository:
+        description: 'Docker image repository'
+        required: true
+        type: string
+    secrets:
+      KUBECONFIG:
+        description: 'Kubeconfig for the target cluster'
+        required: true
+      DATABASE_PASSWORD:
+        description: 'Database password'
+        required: true
+      DJANGO_SECRET_KEY:
+        description: 'Django secret key'
+        required: true
+      REDIS_PASSWORD:
+        description: 'Redis password (if needed)'
+        required: false
+
+  workflow_dispatch:
+    inputs:
+      project:
+        description: 'Project name (e.g., carcamp, neatcamp)'
+        required: true
+        type: string
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - production
+      image_tag:
+        description: 'Docker image tag to deploy'
+        required: true
+        type: string
+      image_repository:
+        description: 'Docker image repository'
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: 
+      name: ${{ inputs.project }}-${{ inputs.environment }}
+      url: https://${{ inputs.project }}-${{ inputs.environment }}.example.com
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.27.0'
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'v3.12.0'
+
+      - name: Configure kubeconfig
+        env:
+          KUBECONFIG_B64: ${{ secrets[format('{0}_{1}_KUBECONFIG', inputs.project, inputs.environment)] }}
+        run: |
+          mkdir -p ~/.kube
+          echo "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Verify cluster connection
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Create namespace if not exists
+        run: |
+          kubectl create namespace ${{ inputs.environment }} --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create/update secrets
+        env:
+          DATABASE_PASSWORD: ${{ secrets[format('{0}_{1}_DATABASE_PASSWORD', inputs.project, inputs.environment)] }}
+          DJANGO_SECRET_KEY: ${{ secrets[format('{0}_{1}_DJANGO_SECRET_KEY', inputs.project, inputs.environment)] }}
+          REDIS_PASSWORD: ${{ secrets[format('{0}_{1}_REDIS_PASSWORD', inputs.project, inputs.environment)] }}
+        run: |
+          kubectl create secret generic django-secrets \
+            --namespace=${{ inputs.environment }} \
+            --from-literal=SECRET_KEY="$DJANGO_SECRET_KEY" \
+            --from-literal=DATABASE_PASSWORD="$DATABASE_PASSWORD" \
+            --from-literal=REDIS_PASSWORD="$REDIS_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy with Helm
+        working-directory: helm/django-app
+        run: |
+          helm upgrade --install ${{ inputs.project }} . \
+            --namespace ${{ inputs.environment }} \
+            --values values-${{ inputs.environment }}.yaml \
+            --set django.image.repository=${{ inputs.image_repository }} \
+            --set django.image.tag=${{ inputs.image_tag }} \
+            --set fullnameOverride=${{ inputs.project }} \
+            --wait \
+            --timeout 10m
+
+      - name: Verify deployment
+        run: |
+          kubectl rollout status deployment/${{ inputs.project }} \
+            --namespace=${{ inputs.environment }} \
+            --timeout=5m
+          
+          echo "Deployment successful!"
+          kubectl get pods -n ${{ inputs.environment }} -l app.kubernetes.io/name=${{ inputs.project }}
+
+      - name: Run migrations
+        run: |
+          # Get the first pod
+          POD=$(kubectl get pods -n ${{ inputs.environment }} \
+            -l app.kubernetes.io/name=${{ inputs.project }} \
+            -o jsonpath='{.items[0].metadata.name}')
+          
+          echo "Running migrations in pod: $POD"
+          kubectl exec -n ${{ inputs.environment }} $POD -- python manage.py migrate --noinput
+
+      - name: Collect static files
+        run: |
+          POD=$(kubectl get pods -n ${{ inputs.environment }} \
+            -l app.kubernetes.io/name=${{ inputs.project }} \
+            -o jsonpath='{.items[0].metadata.name}')
+          
+          echo "Collecting static files in pod: $POD"
+          kubectl exec -n ${{ inputs.environment }} $POD -- python manage.py collectstatic --noinput
+
+      - name: Get deployment info
+        if: success()
+        run: |
+          echo "=== Deployment Information ==="
+          echo "Project: ${{ inputs.project }}"
+          echo "Environment: ${{ inputs.environment }}"
+          echo "Image: ${{ inputs.image_repository }}:${{ inputs.image_tag }}"
+          echo ""
+          echo "=== Services ==="
+          kubectl get svc -n ${{ inputs.environment }} -l app.kubernetes.io/name=${{ inputs.project }}
+          echo ""
+          echo "=== Ingress ==="
+          kubectl get ingress -n ${{ inputs.environment }} -l app.kubernetes.io/name=${{ inputs.project }}
+
+
+
+

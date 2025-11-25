@@ -1,0 +1,400 @@
+# Elastic Stack Helm Chart Values
+# Elasticsearch + Kibana + APM Server + Filebeat
+# For APM and centralized logging
+
+# Elasticsearch Configuration
+elasticsearch:
+  enabled: true
+  
+  # Version
+  imageTag: "8.11.0"
+  
+  # Cluster settings
+  clusterName: "elasticsearch"
+  replicas: 3  # For production, use 3+ for HA
+  minimumMasterNodes: 2
+  
+  # Resources
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+  
+  # Persistence
+  persistence:
+    enabled: true
+    size: 100Gi
+    storageClass: "civo-volume"
+  
+  # JVM heap size (should be 50% of memory limit)
+  esJavaOpts: "-Xmx2g -Xms2g"
+  
+  # Security
+  security:
+    enabled: true
+    elasticPassword: ""  # Set via secret
+    
+  # TLS/SSL
+  ssl:
+    enabled: true
+    createCerts: true
+  
+  # Anti-affinity to spread pods across nodes
+  antiAffinity: "soft"
+  
+  # Index lifecycle management
+  ilm:
+    enabled: true
+    policies:
+      # Delete old logs after 30 days
+      logs:
+        maxAge: "30d"
+        maxSize: "50gb"
+      # Delete old APM data after 7 days
+      apm:
+        maxAge: "7d"
+        maxSize: "10gb"
+
+# Kibana Configuration
+kibana:
+  enabled: true
+  
+  # Version (should match Elasticsearch)
+  imageTag: "8.11.0"
+  
+  # Replicas
+  replicas: 2
+  
+  # Resources
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+  
+  # Elasticsearch connection
+  elasticsearchHosts: "https://elasticsearch:9200"
+  
+  # Security
+  security:
+    enabled: true
+    encryptionKey: ""  # Set via secret (32+ characters)
+  
+  # Ingress
+  ingress:
+    enabled: true
+    ingressClassName: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    hosts:
+      - host: kibana.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: kibana-tls
+        hosts:
+          - kibana.example.com
+  
+  # Plugins
+  plugins:
+    - https://github.com/pjhampton/kibana-prometheus-exporter/releases/download/8.11.0/kibanaPrometheusExporter-8.11.0.zip
+  
+  # Kibana configuration
+  kibanaConfig:
+    kibana.yml: |
+      server.name: kibana
+      server.host: "0.0.0.0"
+      elasticsearch.hosts: [ "https://elasticsearch:9200" ]
+      elasticsearch.username: elastic
+      elasticsearch.password: "${ELASTICSEARCH_PASSWORD}"
+      elasticsearch.ssl.verificationMode: certificate
+      
+      # Enable APM
+      xpack.apm.enabled: true
+      xpack.apm.ui.enabled: true
+      
+      # Enable logs
+      xpack.infra.enabled: true
+      
+      # Enable uptime monitoring
+      xpack.uptime.enabled: true
+      
+      # Enable observability
+      xpack.observability.enabled: true
+
+# APM Server Configuration
+apm-server:
+  enabled: true
+  
+  # Version (should match Elasticsearch)
+  imageTag: "8.11.0"
+  
+  # Replicas
+  replicas: 2
+  
+  # Resources
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  
+  # Autoscaling
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 75
+  
+  # APM Server configuration
+  apmConfig:
+    apm-server.yml: |
+      apm-server:
+        host: "0.0.0.0:8200"
+        
+        # Enable RUM (Real User Monitoring)
+        rum:
+          enabled: true
+          allow_origins: ['*']
+          allow_headers: ['*']
+          source_mapping:
+            enabled: true
+        
+        # Auth token
+        secret_token: "${APM_SECRET_TOKEN}"
+        
+        # Rate limiting
+        max_event_size: 307200
+        max_header_size: 1048576
+      
+      # Output to Elasticsearch
+      output.elasticsearch:
+        hosts: ["https://elasticsearch:9200"]
+        username: elastic
+        password: "${ELASTICSEARCH_PASSWORD}"
+        ssl:
+          enabled: true
+          verification_mode: certificate
+      
+      # Instrumentation
+      instrumentation:
+        enabled: true
+  
+  # Service
+  service:
+    type: ClusterIP
+    port: 8200
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "8200"
+  
+  # Ingress for APM Server
+  ingress:
+    enabled: true
+    ingressClassName: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    hosts:
+      - host: apm.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: apm-tls
+        hosts:
+          - apm.example.com
+
+# Filebeat Configuration (for log shipping)
+filebeat:
+  enabled: true
+  
+  # Version
+  imageTag: "8.11.0"
+  
+  # DaemonSet (runs on every node)
+  daemonset:
+    enabled: true
+  
+  # Resources
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  
+  # Filebeat configuration
+  filebeatConfig:
+    filebeat.yml: |
+      filebeat.inputs:
+      - type: container
+        paths:
+          - /var/log/containers/*.log
+        processors:
+        - add_kubernetes_metadata:
+            host: ${NODE_NAME}
+            matchers:
+            - logs_path:
+                logs_path: "/var/log/containers/"
+        
+        # Parse JSON logs from Django
+        - decode_json_fields:
+            fields: ["message"]
+            target: ""
+            overwrite_keys: true
+        
+        # Add APM correlation
+        - add_fields:
+            target: ''
+            fields:
+              ecs.version: 1.12.0
+      
+      # Output to Elasticsearch
+      output.elasticsearch:
+        hosts: ["https://elasticsearch:9200"]
+        username: elastic
+        password: "${ELASTICSEARCH_PASSWORD}"
+        index: "filebeat-%{[agent.version]}-%{+yyyy.MM.dd}"
+        ssl:
+          enabled: true
+          verification_mode: certificate
+      
+      # Elasticsearch template settings
+      setup.template.name: "filebeat"
+      setup.template.pattern: "filebeat-*"
+      
+      # Kibana setup
+      setup.kibana:
+        host: "https://kibana:5601"
+        username: elastic
+        password: "${ELASTICSEARCH_PASSWORD}"
+        ssl:
+          enabled: true
+          verification_mode: certificate
+      
+      # Enable monitoring
+      monitoring:
+        enabled: true
+        elasticsearch:
+          hosts: ["https://elasticsearch:9200"]
+          username: elastic
+          password: "${ELASTICSEARCH_PASSWORD}"
+
+# Metricbeat Configuration (for infrastructure metrics)
+metricbeat:
+  enabled: true
+  
+  # Version
+  imageTag: "8.11.0"
+  
+  # DaemonSet (runs on every node)
+  daemonset:
+    enabled: true
+  
+  # Deployment (for cluster-wide metrics)
+  deployment:
+    enabled: true
+  
+  # Resources
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  
+  # Metricbeat configuration
+  metricbeatConfig:
+    metricbeat.yml: |
+      metricbeat.modules:
+      # System metrics
+      - module: system
+        period: 30s
+        metricsets:
+          - cpu
+          - load
+          - memory
+          - network
+          - process
+          - process_summary
+          - filesystem
+      
+      # Kubernetes metrics
+      - module: kubernetes
+        period: 30s
+        host: "${NODE_NAME}"
+        hosts: ["https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"]
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        ssl.certificate_authorities:
+          - /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        metricsets:
+          - node
+          - system
+          - pod
+          - container
+          - volume
+      
+      # Docker metrics
+      - module: docker
+        period: 30s
+        hosts: ["unix:///var/run/docker.sock"]
+        metricsets:
+          - container
+          - cpu
+          - diskio
+          - memory
+          - network
+      
+      # Output to Elasticsearch
+      output.elasticsearch:
+        hosts: ["https://elasticsearch:9200"]
+        username: elastic
+        password: "${ELASTICSEARCH_PASSWORD}"
+        ssl:
+          enabled: true
+          verification_mode: certificate
+
+# Secrets (create these separately)
+secrets:
+  # Elasticsearch password
+  elasticsearchPassword:
+    name: "elastic-credentials"
+    key: "password"
+  
+  # APM secret token
+  apmSecretToken:
+    name: "apm-credentials"
+    key: "secret-token"
+  
+  # Kibana encryption key
+  kibanaEncryptionKey:
+    name: "kibana-credentials"
+    key: "encryption-key"
+
+# Global settings
+global:
+  storageClass: "civo-volume"
+  
+  # Elasticsearch endpoints
+  elasticsearchEndpoint: "https://elasticsearch:9200"
+  
+  # Kibana endpoint
+  kibanaEndpoint: "https://kibana:5601"
+
+
+
+

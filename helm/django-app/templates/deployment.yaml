@@ -1,0 +1,142 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "django-app.fullname" . }}
+  labels:
+    {{- include "django-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.django.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "django-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: web
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+      labels:
+        {{- include "django-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: web
+    spec:
+      {{- if .Values.serviceAccount.create }}
+      serviceAccountName: {{ include "django-app.serviceAccountName" . }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        {{- if .Values.initContainers.migrations.enabled }}
+        - name: migrations
+          image: {{ include "django-app.image" . }}
+          imagePullPolicy: {{ .Values.django.image.pullPolicy }}
+          command: {{ toJson .Values.initContainers.migrations.command }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "django-app.fullname" . }}
+            - secretRef:
+                name: {{ include "django-app.fullname" . }}
+          {{- with .Values.django.secretEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- end }}
+        {{- if .Values.initContainers.collectstatic.enabled }}
+        - name: collectstatic
+          image: {{ include "django-app.image" . }}
+          imagePullPolicy: {{ .Values.django.image.pullPolicy }}
+          command: {{ toJson .Values.initContainers.collectstatic.command }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "django-app.fullname" . }}
+            - secretRef:
+                name: {{ include "django-app.fullname" . }}
+          {{- with .Values.django.secretEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- end }}
+      containers:
+        - name: django
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: {{ include "django-app.image" . }}
+          imagePullPolicy: {{ .Values.django.image.pullPolicy }}
+          command:
+            - gunicorn
+            - "{{ .Values.django.settingsModule | replace "." "" }}.wsgi:application"
+            - --bind
+            - "0.0.0.0:8000"
+            - --workers
+            - "{{ .Values.django.gunicorn.workers }}"
+            - --threads
+            - "{{ .Values.django.gunicorn.threads }}"
+            - --timeout
+            - "{{ .Values.django.gunicorn.timeout }}"
+            - --max-requests
+            - "{{ .Values.django.gunicorn.maxRequests }}"
+            - --max-requests-jitter
+            - "{{ .Values.django.gunicorn.maxRequestsJitter }}"
+            - --access-logfile
+            - "-"
+            - --error-logfile
+            - "-"
+            - --log-level
+            - "{{ .Values.logging.level | lower }}"
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "django-app.fullname" . }}
+            - secretRef:
+                name: {{ include "django-app.fullname" . }}
+          {{- with .Values.django.secretEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.django.livenessProbe.enabled }}
+          livenessProbe:
+            {{- toYaml .Values.django.livenessProbe.httpGet | nindent 12 }}
+            initialDelaySeconds: {{ .Values.django.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.django.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.django.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.django.livenessProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.django.readinessProbe.enabled }}
+          readinessProbe:
+            {{- toYaml .Values.django.readinessProbe.httpGet | nindent 12 }}
+            initialDelaySeconds: {{ .Values.django.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.django.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.django.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.django.readinessProbe.failureThreshold }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.django.resources | nindent 12 }}
+          {{- with .Values.volumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.volumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+
+
+

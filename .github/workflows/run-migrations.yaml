@@ -1,0 +1,76 @@
+name: Run Database Migrations
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to run migrations'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - production
+      migration_command:
+        description: 'Migration command'
+        required: false
+        default: 'migrate --noinput'
+        type: string
+
+jobs:
+  run-migrations:
+    name: Run Migrations (${{ github.event.inputs.environment }})
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+      
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          case "${{ github.event.inputs.environment }}" in
+            dev)
+              echo "${{ secrets.DEV_KUBECONFIG }}" > ~/.kube/config
+              ;;
+            staging)
+              echo "${{ secrets.STAGING_KUBECONFIG }}" > ~/.kube/config
+              ;;
+            production)
+              echo "${{ secrets.PRODUCTION_KUBECONFIG }}" > ~/.kube/config
+              ;;
+          esac
+          chmod 600 ~/.kube/config
+      
+      - name: Run migrations as Kubernetes Job
+        run: |
+          kubectl create job migration-${{ github.run_number }} \
+            --from=cronjob/django-app-cleanup \
+            --namespace=${{ github.event.inputs.environment }} \
+            -- python manage.py ${{ github.event.inputs.migration_command }}
+          
+          # Wait for job completion
+          kubectl wait --for=condition=complete \
+            --timeout=300s \
+            job/migration-${{ github.run_number }} \
+            --namespace=${{ github.event.inputs.environment }}
+          
+          # Show logs
+          kubectl logs job/migration-${{ github.run_number }} \
+            --namespace=${{ github.event.inputs.environment }}
+      
+      - name: Cleanup migration job
+        if: always()
+        run: |
+          kubectl delete job migration-${{ github.run_number }} \
+            --namespace=${{ github.event.inputs.environment }} \
+            --ignore-not-found=true
+
+
+
+

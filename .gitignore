@@ -1,0 +1,106 @@
+# Terraform
+**/.terraform/
+**/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+terraform/environments/*/outputs.json
+terraform/projects/*/*/outputs.json
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Kubernetes
+*.kubeconfig
+kubeconfig
+.kube/
+*-kubeconfig.yaml
+
+# Helm
+*.tgz
+.helmignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+*.env
+
+# Secrets
+secrets/
+*.key
+*.pem
+*.crt
+*.p12
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Editor directories
+.project
+.classpath
+.settings/
+
+/CHANGELOG.md
+/SUMMARY.md
+/STRUCTURE.md
+/DEPLOYMENT_FIXES.md
+/GET_STARTED.md
+/CHANGES_SUMMARY.md
+/PAAS_CLI_SUMMARY.md
+/LOADBALANCER_GUIDE.md
+/PROJECT_SUMMARY.md
+/CONTRIBUTING.md
+/VERIFICATION.md
+/docs/
+/examples/

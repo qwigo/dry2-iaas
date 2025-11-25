@@ -1,0 +1,229 @@
+# Sentry Helm Chart Values
+# This deploys self-hosted Sentry for error tracking
+# Chart: https://github.com/sentry-kubernetes/charts
+
+# Global settings
+global:
+  # Shared across all Sentry components
+  storageClass: "civo-volume"  # Use Civo's storage class
+  
+sentry:
+  # Sentry web interface
+  web:
+    replicas: 2
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 2000m
+        memory: 2Gi
+    
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 5
+      targetCPUUtilizationPercentage: 75
+  
+  # Sentry worker for async tasks
+  worker:
+    replicas: 2
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 2000m
+        memory: 2Gi
+    
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 8
+      targetCPUUtilizationPercentage: 75
+  
+  # Cron jobs for maintenance
+  cron:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+# PostgreSQL for Sentry
+postgresql:
+  enabled: true
+  auth:
+    existingSecret: "sentry-postgresql"
+    secretKeys:
+      adminPasswordKey: "postgresql-password"
+  primary:
+    persistence:
+      enabled: true
+      size: 50Gi
+      storageClass: "civo-volume"
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+
+# Redis for Sentry
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    existingSecret: "sentry-redis"
+    existingSecretPasswordKey: "redis-password"
+  master:
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClass: "civo-volume"
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+# Kafka for event processing (optional, can use Redis instead)
+kafka:
+  enabled: false
+  # Enable for high-volume deployments
+  # See: https://develop.sentry.dev/self-hosted/kafka/
+
+# Clickhouse for analytics (optional)
+clickhouse:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 100Gi
+    storageClass: "civo-volume"
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+
+# Ingress configuration
+ingress:
+  enabled: true
+  ingressClassName: "nginx"  # or "traefik" depending on your setup
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  hosts:
+    - host: sentry.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: sentry-tls
+      hosts:
+        - sentry.example.com
+
+# Email configuration
+mail:
+  backend: "smtp"
+  host: "smtp.sendgrid.net"
+  port: 587
+  username: "apikey"
+  password: ""  # Set via secret
+  useTls: true
+  from: "sentry@example.com"
+
+# File storage (for source maps, attachments, etc.)
+filestore:
+  # Option 1: Filesystem (default)
+  backend: "filesystem"
+  
+  # Option 2: S3-compatible (recommended for production)
+  # backend: "s3"
+  # s3:
+  #   accessKey: ""  # Set via secret
+  #   secretKey: ""  # Set via secret
+  #   bucketName: "sentry-files"
+  #   endpointUrl: "https://objectstore.nyc1.civo.com"
+  #   region: "NYC1"
+
+# System configuration
+system:
+  # Secret key for encryption
+  secretKey: ""  # Set via existingSecret
+  
+  # Public URL for Sentry
+  url: "https://sentry.example.com"
+  
+  # Admin email
+  adminEmail: "admin@example.com"
+
+# User configuration
+user:
+  create: true
+  email: "admin@example.com"
+  password: ""  # Set via secret
+
+# Metrics and monitoring
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+
+# Resource quotas per project
+quotas:
+  # Max events per second per project
+  maxEventsPerSecond: 100
+  
+  # Data retention in days
+  retentionDays: 90
+
+# Feature flags
+features:
+  # Enable session recording
+  sessionRecording: true
+  
+  # Enable profiling
+  profiling: true
+  
+  # Enable replays
+  replays: true
+
+# Security settings
+security:
+  # Disable public registration
+  disableRegistration: false
+  
+  # Require email verification
+  requireEmailVerification: true
+  
+  # Enable 2FA
+  twoFactorAuth: true
+
+# Notifications
+notifications:
+  # Slack integration
+  slack:
+    enabled: true
+  
+  # PagerDuty integration
+  pagerduty:
+    enabled: false
+  
+  # Discord integration
+  discord:
+    enabled: false
+
+
+
+

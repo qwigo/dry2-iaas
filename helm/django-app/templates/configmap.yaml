@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "django-app.fullname" . }}
+  labels:
+    {{- include "django-app.labels" . | nindent 4 }}
+data:
+  # Django settings
+  DJANGO_SETTINGS_MODULE: {{ .Values.django.settingsModule | quote }}
+  {{- range $key, $value := .Values.django.env }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}
+  
+  # Database configuration (non-sensitive)
+  {{- if .Values.database.host }}
+  DATABASE_HOST: {{ .Values.database.host | quote }}
+  DATABASE_PORT: {{ .Values.database.port | quote }}
+  DATABASE_NAME: {{ .Values.database.name | quote }}
+  DATABASE_USER: {{ .Values.database.username | quote }}
+  DATABASE_SSL_MODE: {{ .Values.database.sslMode | quote }}
+  {{- end }}
+  
+  # Redis configuration (non-sensitive)
+  {{- if .Values.redis.host }}
+  REDIS_HOST: {{ .Values.redis.host | quote }}
+  REDIS_PORT: {{ .Values.redis.port | quote }}
+  REDIS_DB: {{ .Values.redis.db | quote }}
+  REDIS_SSL: {{ .Values.redis.ssl | quote }}
+  {{- end }}
+  
+  # Storage configuration (non-sensitive)
+  {{- if .Values.storage.enabled }}
+  AWS_STORAGE_BUCKET_NAME: {{ .Values.storage.bucket | quote }}
+  AWS_S3_REGION_NAME: {{ .Values.storage.region | quote }}
+  {{- if .Values.storage.endpoint }}
+  AWS_S3_ENDPOINT_URL: {{ .Values.storage.endpoint | quote }}
+  {{- end }}
+  {{- end }}
+  
+  # Logging
+  LOG_LEVEL: {{ .Values.logging.level | quote }}
+  LOG_JSON: {{ .Values.logging.json | quote }}
+  
+  # Additional configuration
+  {{- range $key, $value := .Values.configMap.data }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}
+
+
+
+
