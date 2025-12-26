@@ -54,6 +54,8 @@ build/
 .env.local
 .env.*.local
 *.env
+.envrc
+.env.*
 
 # Secrets
 secrets/

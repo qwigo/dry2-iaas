@@ -2,8 +2,9 @@
 
 from pathlib import Path
 from typing import Optional
+
 import yaml
-import os
+
 
 class Config:
     """Project configuration manager."""
@@ -13,7 +14,7 @@ class Config:
             # Find project root by looking for .git or specific markers
             current = Path.cwd()
             while current != current.parent:
-                if (current / ".git").exists() or (current / "terraform").exists():
+                if (current / ".git").exists() or (current / ".dry2").exists():
                     project_root = current
                     break
                 current = current.parent
@@ -21,8 +22,8 @@ class Config:
                 project_root = Path.cwd()
         
         self.project_root = Path(project_root)
-        self.terraform_dir = self.project_root / "terraform"
-        self.projects_dir = self.terraform_dir / "projects"
+        self.dry2_dir = self.project_root / ".dry2"
+        self.projects_dir = self.dry2_dir / "projects"
         self.helm_dir = self.project_root / "helm"
         self.config_file = self.project_root / ".dry2.yaml"
     
@@ -72,7 +73,7 @@ class Config:
     
     def ensure_project_structure(self):
         """Ensure basic project structure exists."""
-        self.terraform_dir.mkdir(exist_ok=True)
+        self.dry2_dir.mkdir(exist_ok=True)
         self.projects_dir.mkdir(exist_ok=True)
         self.helm_dir.mkdir(exist_ok=True)
 

@@ -1,9 +1,3 @@
-variable "civo_token" {
-  description = "Civo API token"
-  type        = string
-  sensitive   = true
-}
-
 variable "upstash_email" {
   description = "Upstash account email"
   type        = string

@@ -9,7 +9,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: {% raw %}${{ github.repository }}{% endraw %}
 
 jobs:
   deploy:
@@ -17,109 +17,164 @@ jobs:
     permissions:
       contents: read
       packages: write
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set environment
         id: env
         run: |
 {% for env in environments %}
-          {% if loop.first %}if{% else %}elif{% endif %} [ "${{ github.ref_name }}" == "{{ env.branch }}" ]; then
+{% if loop.first %}
+          if [ "{% raw %}${{ github.ref_name }}{% endraw %}" == "{{ env.branch }}" ]; then
+{% else %}
+          elif [ "{% raw %}${{ github.ref_name }}{% endraw %}" == "{{ env.branch }}" ]; then
+{% endif %}
             echo "environment={{ env.name }}" >> $GITHUB_OUTPUT
+            echo "environment_upper={{ env.name | upper }}" >> $GITHUB_OUTPUT
             echo "namespace={{ env.name }}" >> $GITHUB_OUTPUT
 {% endfor %}
           else
-            echo "Unknown branch: ${{ github.ref_name }}"
+            echo "Unknown branch: {% raw %}${{ github.ref_name }}{% endraw %}"
             exit 1
           fi
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      
+
       - name: Log in to Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      
+          registry: {% raw %}${{ env.REGISTRY }}{% endraw %}
+
+          username: {% raw %}${{ github.actor }}{% endraw %}
+
+          password: {% raw %}${{ secrets.GITHUB_TOKEN }}{% endraw %}
+
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: {% raw %}${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}{% endraw %}
+
           tags: |
             type=ref,event=branch
-            type=sha,prefix=${{ github.ref_name }}-
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-      
+            type=sha,prefix={% raw %}${{ github.ref_name }}{% endraw %}-
+            type=raw,value=latest,enable={% raw %}${{ github.ref == 'refs/heads/main' }}{% endraw %}
+
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: {% raw %}${{ steps.meta.outputs.tags }}{% endraw %}
+
+          labels: {% raw %}${{ steps.meta.outputs.labels }}{% endraw %}
+
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+          terraform_wrapper: false
+
+      - name: Download Terraform State
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: terraform-state-{% raw %}${{ steps.env.outputs.environment }}{% endraw %}
+
+          path: ./.dry2/terraform/environments/{% raw %}${{ steps.env.outputs.environment }}{% endraw %}
+
+
+      - name: Deploy Infrastructure with Terraform
+        working-directory: ./.dry2/terraform/environments/{% raw %}${{ steps.env.outputs.environment }}{% endraw %}
+
+        env:
+          CIVO_TOKEN: {% raw %}${{ secrets[format('{0}_CIVO_TOKEN', steps.env.outputs.environment_upper)] }}{% endraw %}
+
+          TF_VAR_upstash_email: {% raw %}${{ secrets[format('{0}_UPSTASH_EMAIL', steps.env.outputs.environment_upper)] }}{% endraw %}
+
+          TF_VAR_upstash_api_key: {% raw %}${{ secrets[format('{0}_UPSTASH_API_KEY', steps.env.outputs.environment_upper)] }}{% endraw %}
+
+          TF_VAR_project_name: {{ project_name }}
+        run: |
+          terraform init
+          terraform plan -out=tfplan
+          terraform apply -auto-approve tfplan
+          
+          # Export outputs for later steps
+          echo "REDIS_URL=$(terraform output -raw redis_url)" >> $GITHUB_ENV
+          echo "KUBECONFIG_CONTENT=$(terraform output -raw kubeconfig)" >> $GITHUB_ENV
+
+      - name: Upload Terraform State
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: terraform-state-{% raw %}${{ steps.env.outputs.environment }}{% endraw %}
+
+          path: ./.dry2/terraform/environments/{% raw %}${{ steps.env.outputs.environment }}{% endraw %}/terraform.tfstate
+          retention-days: 730
+
       - name: Install kubectl
         uses: azure/setup-kubectl@v3
-      
+
       - name: Install Helm
         uses: azure/setup-helm@v3
         with:
           version: '3.12.0'
-      
+
       - name: Configure kubectl
         run: |
           mkdir -p $HOME/.kube
-          echo "${{ secrets[format('{0}_KUBECONFIG', steps.env.outputs.environment)] }}" | base64 -d > $HOME/.kube/config
-          kubectl config use-context $(kubectl config current-context)
+          echo "$KUBECONFIG_CONTENT" > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+          kubectl cluster-info
           kubectl get nodes
-      
+
       - name: Create namespace
         run: |
-          kubectl create namespace ${{ steps.env.outputs.namespace }} --dry-run=client -o yaml | kubectl apply -f -
-      
+          kubectl create namespace {% raw %}${{ steps.env.outputs.namespace }}{% endraw %} --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Create secrets
         run: |
           kubectl create secret generic django-secrets \
-            --namespace=${{ steps.env.outputs.namespace }} \
-            --from-literal=SECRET_KEY="${{ secrets[format('{0}_DJANGO_SECRET_KEY', steps.env.outputs.environment)] }}" \
-            --from-literal=DATABASE_URL="${{ secrets[format('{0}_DATABASE_URL', steps.env.outputs.environment)] }}" \
-            --from-literal=REDIS_URL="${{ secrets[format('{0}_REDIS_URL', steps.env.outputs.environment)] }}" \
+            --namespace={% raw %}${{ steps.env.outputs.namespace }}{% endraw %} \
+            --from-literal=SECRET_KEY="{% raw %}${{ secrets[format('{0}_DJANGO_SECRET_KEY', steps.env.outputs.environment_upper)] }}{% endraw %}" \
+            --from-literal=DATABASE_URL="{% raw %}${{ secrets[format('{0}_DATABASE_URL', steps.env.outputs.environment_upper)] }}{% endraw %}" \
+            --from-literal=REDIS_URL="$REDIS_URL" \
             --dry-run=client -o yaml | kubectl apply -f -
-      
+
       - name: Deploy with Helm
         run: |
-          IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n 1 | cut -d: -f2)
-          
+          IMAGE_TAG=$(echo "{% raw %}${{ steps.meta.outputs.tags }}{% endraw %}" | head -n 1 | cut -d: -f2)
+
           helm upgrade --install {{ project_name }} \
-            ./helm/django-app \
-            --namespace ${{ steps.env.outputs.namespace }} \
-            --set django.image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
+            ./.dry2/helm/django-app \
+            --namespace {% raw %}${{ steps.env.outputs.namespace }}{% endraw %} \
+            --set django.image.repository={% raw %}${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}{% endraw %} \
             --set django.image.tag=${IMAGE_TAG} \
             --wait --timeout 10m
-      
+
       - name: Run migrations
         run: |
           kubectl run migrations-$(date +%s) \
-            --namespace=${{ steps.env.outputs.namespace }} \
-            --image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }} \
+            --namespace={% raw %}${{ steps.env.outputs.namespace }}{% endraw %} \
+            --image={% raw %}${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}{% endraw %} \
             --restart=Never \
-            --env="DATABASE_URL=${{ secrets[format('{0}_DATABASE_URL', steps.env.outputs.environment)] }}" \
+            --env="DATABASE_URL={% raw %}${{ secrets[format('{0}_DATABASE_URL', steps.env.outputs.environment_upper)] }}{% endraw %}" \
+            --env="REDIS_URL=$REDIS_URL" \
             --command -- python manage.py migrate --noinput
-      
+
       - name: Deployment summary
         run: |
-          echo "## Deployment Complete! 🚀" >> $GITHUB_STEP_SUMMARY
+          echo "## Deployment Complete!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Environment**: ${{ steps.env.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Namespace**: ${{ steps.env.outputs.namespace }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Image**: ${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: {% raw %}${{ steps.env.outputs.environment }}{% endraw %}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Namespace**: {% raw %}${{ steps.env.outputs.namespace }}{% endraw %}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image**: {% raw %}${{ steps.meta.outputs.tags }}{% endraw %}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          kubectl get pods -n ${{ steps.env.outputs.namespace }} >> $GITHUB_STEP_SUMMARY
-
-
+          kubectl get pods -n {% raw %}${{ steps.env.outputs.namespace }}{% endraw %} >> $GITHUB_STEP_SUMMARY

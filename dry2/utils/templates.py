@@ -108,9 +108,17 @@ def create_github_workflow(
     output_path: Path,
     project_name: str,
     github_repo: str,
-    environments: list[str],
+    environments: list,
 ):
-    """Create GitHub Actions workflow."""
+    """Create GitHub Actions workflow.
+    
+    Args:
+        output_path: Path to write the workflow file
+        project_name: Name of the project
+        github_repo: GitHub repository (org/repo)
+        environments: List of environment dicts with 'name' and 'branch' keys
+                     e.g. [{"name": "dev", "branch": "develop"}, {"name": "production", "branch": "main"}]
+    """
     engine = TemplateEngine()
     
     context = {

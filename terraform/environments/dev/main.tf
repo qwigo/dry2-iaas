@@ -22,7 +22,7 @@ terraform {
 
 # Providers
 provider "civo" {
-  token  = var.civo_token
+  # Uses CIVO_TOKEN environment variable automatically
   region = var.region
 }
 

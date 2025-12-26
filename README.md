@@ -4,6 +4,8 @@
 
 Deploy your Django applications with a Heroku-like experience using modern cloud infrastructure. DRY2-IaaS combines Infrastructure as Code (Terraform), Kubernetes (Helm), and automated CI/CD workflows to give you a production-ready deployment platform.
 
+> 🎯 **NEW:** The CLI now uses GitHub Secrets exclusively. **[START HERE →](START_HERE.md)** for quick setup!
+
 ## Features
 
 - 🎯 **PaaS-like Experience** - Deploy Django apps with simple CLI commands
@@ -22,8 +24,48 @@ Deploy your Django applications with a Heroku-like experience using modern cloud
 - [Terraform](https://www.terraform.io/downloads) >= 1.0
 - [Helm](https://helm.sh/docs/intro/install/) >= 3.0
 - [kubectl](https://kubernetes.io/docs/tasks/tools/) for Kubernetes management
+- [GitHub CLI](https://cli.github.com/) (optional, for easier secret management)
 - A Civo account (for cloud infrastructure)
+- An Upstash account (for Redis)
 - A GitHub account (for CI/CD)
+
+## 🔐 Security First: GitHub Secrets Setup
+
+**IMPORTANT:** This project uses GitHub Secrets to manage all credentials securely.
+
+### The `dry2` CLI Will NOT Ask for Credentials
+
+- ❌ **NO** credential prompting during `dry2 init`
+- ❌ **NO** credentials saved to files
+- ❌ **NO** credentials committed to git
+- ✅ **ALL** credentials must be set manually in GitHub
+
+Before deploying, you **must** manually set up GitHub Secrets for your repository.
+
+📖 **[Required GitHub Secrets](REQUIRED_GITHUB_SECRETS.md)** (Quick Reference)
+📖 **[Complete Setup Guide](GITHUB_SECRETS_SETUP.md)** (Detailed Instructions)
+
+### Quick Setup Using GitHub CLI:
+
+```bash
+# Install GitHub CLI
+brew install gh  # macOS
+# or: sudo apt install gh  # Linux
+
+# Authenticate
+gh auth login
+
+# Set secrets (replace with your actual values)
+gh secret set DEV_CIVO_TOKEN --body "your-token"
+gh secret set DEV_UPSTASH_EMAIL --body "your-email"
+gh secret set DEV_UPSTASH_API_KEY --body "your-key"
+gh secret set DEV_DJANGO_SECRET_KEY --body "$(python3 -c 'import secrets; print(secrets.token_urlsafe(50))')"
+gh secret set DEV_DATABASE_URL --body "postgresql://..."
+
+# Repeat for PRODUCTION_* secrets
+```
+
+For detailed instructions, see [GITHUB_SECRETS_SETUP.md](GITHUB_SECRETS_SETUP.md).
 
 ## Installation
 
@@ -255,27 +297,33 @@ DRY2-IaaS provides a complete deployment pipeline:
 
 ## Configuration
 
-### Environment Variables
+### Credentials Management
 
-Create a `.env` file in your project root:
+**All credentials are managed via GitHub Secrets.** This ensures:
+- ✅ No secrets in your repository
+- ✅ No local credential files to manage
+- ✅ Environment-specific credentials (dev, staging, production)
+- ✅ Secure encrypted storage
 
-```env
-# Civo Configuration
-CIVO_API_KEY=your_civo_api_key
-CIVO_REGION=NYC1
+See [GITHUB_SECRETS_SETUP.md](GITHUB_SECRETS_SETUP.md) for complete setup instructions.
 
-# Upstash Configuration
-UPSTASH_EMAIL=your_email
-UPSTASH_API_KEY=your_upstash_api_key
+### Local Development
 
-# GitHub Configuration
-GITHUB_TOKEN=your_github_token
+For local Terraform operations, use environment variables instead of files:
 
-# Django Configuration
-DJANGO_SECRET_KEY=your_secret_key
-DJANGO_DEBUG=False
-DJANGO_ALLOWED_HOSTS=your-domain.com
+```bash
+# Create a .env file (git-ignored)
+export TF_VAR_civo_token="your-token"
+export TF_VAR_upstash_email="your-email"
+export TF_VAR_upstash_api_key="your-key"
+
+# Source it before running terraform
+source .env
+cd terraform/environments/dev
+terraform plan
 ```
+
+**Note:** The `.env` file is git-ignored by default. Never commit credentials!
 
 ### Terraform Variables
 
